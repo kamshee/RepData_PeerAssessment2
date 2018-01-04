@@ -1,0 +1,136 @@
+---
+title: "Storm_Analysis"
+author: "Joe Lee"
+date: "1/3/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.path='figure2/')
+```
+
+## Synopsis
+In this report I aim to identify the event types that are most harmful to population health, and the event types that have the greatest economic consequences. I will be using the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database.
+
+## Data Loading and Processing
+Load pertinent libraries. Download the data file and use read.csv to read it in.
+```{r}
+library(dplyr)
+library(ggplot2)
+library(knitr)
+fileUrl <- 
+        "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+download.file(fileUrl, "repdata%2Fdata%2FStormData.csv.bz2")
+data <- read.csv("./repdata%2Fdata%2FStormData.csv.bz2", header = TRUE,sep = ",")
+```
+After reading the data, check the dimensions.
+```{r}
+dim(data)
+head(data)
+str(data)
+```
+
+### Determine storm event type harmful to population health
+Across the United States, which types of events (as indicated in the 𝙴𝚅𝚃𝚈𝙿𝙴 variable) are most harmful with respect to population health?
+
+The relevant columns of the data set were selected.
+First, summarize the total number of fatalities and injuries separately for each storm event type.
+Second, rank in descending order by number of fatalities by event type.
+Third, rank in descending order by number of injuries.
+Fourth, rank in descending order by fatalities then injuries.
+Modified the ranking to improve plotting.
+Finally, show top ten of the last ranking.
+```{r}
+data2 <- select(data, EVTYPE,FATALITIES,INJURIES,PROPDMG,PROPDMGEXP,
+                CROPDMG, CROPDMGEXP)
+data3 <- data2 %>% group_by(EVTYPE) %>% summarize(sum.fatalities = sum(FATALITIES),sum.injuries = sum(INJURIES))
+data4 <- data3 %>% arrange(desc(sum.fatalities))
+data5 <- data3 %>% arrange(desc(sum.injuries))
+data6 <- data3 %>% arrange(desc(sum.fatalities),desc(sum.injuries))
+data6$EVTYPE <- factor(data6$EVTYPE, levels = data6$EVTYPE[order(data6$sum.fatalities,decreasing=T)])
+data7 <- head(data6,10)
+data7
+```
+
+### Determine storm event type with the greatest economic consequences
+'Economic consequences' was interpreted as the sum of property and crop damage due to the storm event.
+
+The expontent values of the PROPDMGEXP and CROPDMGEXP columns signifies magnitude include “K” for thousands, “M” for millions, and “B” for billions. 
+
+Since the NOAA website is not explicit on how to handle the rest of the exponent values of the PROPDMGEXP and CROPDMGEXP columns of the database, the following website was used to determine possible values.
+
+Reference: https://rstudio-pubs-static.s3.amazonaws.com/58957_37b6723ee52b455990e149edde45e5b6.html
+
+#### Possible values of CROPDMGEXP and PROPDMGEXP and their converted values
+* H,h,K,k,M,m,B,b,+,-,?,0,1,2,3,4,5,6,7,8, and blank-character
+* H,h = hundreds = 100
+* K,k = kilos = thousands = 1,000
+* M,m = millions = 1,000,000
+* B,b = billions = 1,000,000,000
+* (+) = 1
+* (-) = 0
+* (?) = 0
+* black/empty character ("") = 0
+* numeric 0..8 = 10
+
+Convert proper values and calculate total damage including property and crops.
+Then show top 10 storm event types in descending order by damage.
+```{r}
+storm <- select(data2, -c(FATALITIES,INJURIES))
+storm1<-storm
+storm1$PROPDMGEXP <- as.character(storm1$PROPDMGEXP)
+storm1$PROPDMGEXP <- gsub("[0-8]","10",storm1$PROPDMGEXP)
+storm1$PROPDMGEXP <- gsub("[Hh]","100",storm1$PROPDMGEXP)
+storm1$PROPDMGEXP <- gsub("[Kk]","1000",storm1$PROPDMGEXP)
+storm1$PROPDMGEXP <- gsub("[Mm]","1000000",storm1$PROPDMGEXP)
+storm1$PROPDMGEXP <- gsub("[Bb]","1000000000",storm1$PROPDMGEXP)
+storm1$PROPDMGEXP <- gsub("[+]","1",storm1$PROPDMGEXP)
+storm1$PROPDMGEXP <- gsub("[-|?]","0",storm1$PROPDMGEXP)
+storm1$PROPDMGEXP <- as.numeric(storm1$PROPDMGEXP)
+storm1$PROPDMGEXP[is.na(storm1$PROPDMGEXP)] <- 0
+
+storm1$CROPDMGEXP <- as.character(storm1$CROPDMGEXP)
+storm1$CROPDMGEXP <- gsub("[0-8]","10",storm1$CROPDMGEXP)
+storm1$CROPDMGEXP <- gsub("[Hh]","100",storm1$CROPDMGEXP)
+storm1$CROPDMGEXP <- gsub("[Kk]","1000",storm1$CROPDMGEXP)
+storm1$CROPDMGEXP <- gsub("[Mm]","1000000",storm1$CROPDMGEXP)
+storm1$CROPDMGEXP <- gsub("[Bb]","1000000000",storm1$CROPDMGEXP)
+storm1$CROPDMGEXP <- gsub("[+]","1",storm1$CROPDMGEXP)
+storm1$CROPDMGEXP <- gsub("[-|?]","0",storm1$CROPDMGEXP)
+storm1$CROPDMGEXP <- as.numeric(storm1$CROPDMGEXP)
+storm1$CROPDMGEXP[is.na(storm1$CROPDMGEXP)] <- 0
+
+storm2 <- mutate(storm1,damagevalue=(PROPDMG*PROPDMGEXP)+(CROPDMG*CROPDMGEXP))
+storm3 <- storm2 %>% group_by(EVTYPE) %>% summarize(value = sum(damagevalue)) %>%
+    arrange(desc(value))
+storm3$EVTYPE <- factor(storm3$EVTYPE, levels = storm3$EVTYPE[order(storm3$value,decreasing=T)])
+storm4 <- head(storm3,10)
+head(storm3,10)
+```
+
+
+## Results
+
+### Plot of event types most harmful to population health
+This plot shows the top 10 most harmful storm event types to population health in descending order by fatalities then by injuries.
+```{r}
+ggplot(data7, aes(EVTYPE,sum.fatalities,fill=EVTYPE))+
+  geom_bar(stat="identity")+
+  labs(title="Top 10 Storm Event Types by Fatality",
+    x="Storm Event Type",
+    y="Fatalities")+
+  theme(axis.text.x=element_blank())+
+  guides(fill=guide_legend(title="Storm Event Type"))
+```
+
+### Plot of event types with the greatest economic consequences
+This plot shows the top 10 storm event types with the greatest economic consequences in descending order. Economic consquences was measured as the sum of property and crop damage.
+```{r}
+ggplot(storm4, aes(EVTYPE,value,fill=EVTYPE))+
+  geom_bar(stat="identity")+
+  labs(title="Top 10 Storm Event Types by Economic Consequences",
+    x="Storm Event Type",
+    y="Property and Crop Damage Value")+
+  theme(axis.text.x=element_blank())+
+  guides(fill=guide_legend(title="Storm Event Type"))
+```
